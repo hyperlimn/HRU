@@ -1,5 +1,7 @@
 import type { RuntimeSummary } from '../core/state';
 import type { DimensionID, SnapshotID } from '../shared/ids';
+import type { HashHex } from '../shared/ids';
+import type { ObservationCursor, SequencedRelationshipEvent } from '../observer/observation-types';
 
 export const MULTIPLIERS = [1, 2, 5, 10, 25, 50, 100, 250, 500, 1000] as const;
 export type Multiplier = (typeof MULTIPLIERS)[number];
@@ -13,6 +15,9 @@ export type Command =
 
 export type Query =
   | { readonly type: 'universe/state' }
+  | { readonly type: 'observation/frame' }
+  | { readonly type: 'observation/events'; readonly cursor?: ObservationCursor; readonly limit?: number }
+  | { readonly type: 'observation/entity'; readonly hash: HashHex }
   | { readonly type: 'saves/list' }
   | { readonly type: 'dimensions/list' }
   | { readonly type: 'laboratory/list' }
@@ -28,4 +33,5 @@ export type ClientMessage =
 export type ServerMessage =
   | { readonly kind: 'response'; readonly requestId: string; readonly payload: CommandResult | QueryResult }
   | { readonly kind: 'summary'; readonly payload: RuntimeSummary }
+  | { readonly kind: 'observation-events'; readonly payload: { readonly generation: number; readonly events: readonly SequencedRelationshipEvent[] } }
   | { readonly kind: 'status'; readonly payload: { readonly connected: boolean } };

@@ -1,5 +1,6 @@
 import { PanelRegistry } from '../panel-registry';
-import { DimensionsPanel, EntityPanel, LaboratoryPanel, MachinePanel, ObserverPanel, RenderPanel, SavesPanel, SystemPanel, TimePanel, UniversePanel } from './panels';
+import { DimensionsPanel, LaboratoryPanel, MachinePanel, SavesPanel, SystemPanel, TimePanel, UniversePanel } from './panels';
+import { EntityPanel, ObserverPanel, RenderPanel } from './observation-panels';
 
 export const panelRegistry = new PanelRegistry();
 [

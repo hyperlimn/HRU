@@ -8,7 +8,7 @@ const PID_FILE = resolve('.hru-dev.pid');
 
 async function main(): Promise<void> {
   const instanceId = randomUUID();
-  const runtimeStack = await startRuntimeStack(8787, instanceId);
+  const runtimeStack = await startRuntimeStack(8787, instanceId, process.env.HRU_DATA_DIR ? resolve(process.env.HRU_DATA_DIR) : undefined);
   let vite;
   try {
     vite = await createViteServer({ server: { port: 5173, strictPort: true } });

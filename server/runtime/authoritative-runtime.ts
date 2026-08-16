@@ -17,8 +17,8 @@ export class AuthoritativeRuntime extends EventEmitter implements RuntimePort {
   private summary: RuntimeSummary; private activeDimension = DIMENSION_ZERO;
   private autosaveStatus: RuntimeSummary['autosaveStatus'] = 'idle'; private lastAutosaveTick?: number;
 
-  constructor(private readonly worker: SimulationWorkerHost, initialSummary: RuntimeSummary, manifest: UniverseManifest, saveDirectory = resolve('.hru-data', 'saves')) {
-    super(); this.summary = initialSummary; this.saves = new PersistentSaveStore(saveDirectory, manifest);
+  constructor(private readonly worker: SimulationWorkerHost, initialSummary: RuntimeSummary, manifest: UniverseManifest, saveDirectory?: string) {
+    super(); this.summary = initialSummary; this.saves = new PersistentSaveStore(saveDirectory ?? resolve('.hru-data', 'saves'), manifest);
     for (const module of [
       { id: 'dimensions', label: 'Dimensions', version: '1.0.0', deterministic: true }, { id: 'saves', label: 'Save System', version: '2.0.0', deterministic: false },
       { id: 'laboratory', label: 'Laboratory', version: '0.1.0', deterministic: false }, { id: 'instruments', label: 'Instruments', version: '1.0.0', deterministic: true },
@@ -26,6 +26,7 @@ export class AuthoritativeRuntime extends EventEmitter implements RuntimePort {
     ]) this.modules.register(module);
     worker.on('summary', (summary: RuntimeSummary) => { this.summary = this.decorate(summary); this.emit('summary', this.summary); });
     worker.on('autosave-boundary', (state: UniverseSnapshot) => void this.persistAutosave(state));
+    worker.on('observation-events', (events, generation) => this.emit('observation-events', events, generation));
     worker.on('error', (error) => console.error('SIM WORKER   ERROR', error));
   }
   start(): void { this.emit('summary', this.currentSummary()); }
@@ -37,7 +38,7 @@ export class AuthoritativeRuntime extends EventEmitter implements RuntimePort {
     switch (command.type) {
       case 'time/set-running': this.summary = this.decorate(await this.worker.setRunning(command.running)); break;
       case 'time/set-multiplier': this.summary = this.decorate(await this.worker.setMultiplier(command.multiplier)); break;
-      case 'saves/save-current': { const state = await this.worker.getState(); const saved = await this.saves.saveManual(state, command.label); return { ok: true, data: saved, message: `Saved tick ${saved.state.tick}` }; }
+      case 'saves/save-current': { const state = await this.worker.getState(); const saved = await this.saves.saveManual(state, command.label); return { ok: true, data: { id: saved.id, kind: saved.kind, label: saved.label, tick: saved.state.tick, savedAt: saved.savedAt }, message: `Saved tick ${saved.state.tick}` }; }
       case 'saves/resume': { const state = await this.saves.load(command.snapshotId); if (!state) return { ok: false, message: 'Snapshot not found' }; this.summary = this.decorate(await this.worker.replaceState(state)); this.emit('summary', this.summary); return { ok: true, data: this.summary, message: `Resumed tick ${state.tick}` }; }
       case 'dimensions/select': { const state = await this.worker.getState(); this.dimensions.project(command.dimensionId, state); this.activeDimension = command.dimensionId; this.summary = this.decorate(this.summary); break; }
     }
@@ -46,7 +47,10 @@ export class AuthoritativeRuntime extends EventEmitter implements RuntimePort {
   async query(query: Query): Promise<QueryResult> {
     switch (query.type) {
       case 'universe/state': return { ok: true, data: this.currentSummary() };
-      case 'saves/list': return { ok: true, data: await this.saves.list() };
+      case 'observation/frame': return { ok: true, data: await this.worker.getObservationFrame() };
+      case 'observation/events': return { ok: true, data: await this.worker.getObservationEvents(query.cursor, query.limit) };
+      case 'observation/entity': return { ok: true, data: await this.worker.getObservedEntity(query.hash) };
+      case 'saves/list': return { ok: true, data: (await this.saves.list()).map((save) => ({ id: save.id, kind: save.kind, label: save.label, tick: save.state.tick, savedAt: save.savedAt })) };
       case 'dimensions/list': return { ok: true, data: this.dimensions.list().map(({ id, label }) => ({ id, label })) };
       case 'laboratory/list': return { ok: true, data: this.laboratory.list().map(({ id, label }) => ({ id, label })) };
       case 'modules/list': return { ok: true, data: this.modules.list() };

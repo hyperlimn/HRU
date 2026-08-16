@@ -11,6 +11,7 @@ export interface SavedSnapshot {
   readonly state: UniverseSnapshot;
   readonly savedAt: string;
 }
+export interface SaveListing { readonly id: SnapshotID; readonly kind: SavedSnapshot['kind']; readonly label: string; readonly tick: number; readonly savedAt: string }
 
 export interface SaveStore {
   saveAutosave(state: UniverseSnapshot): Promise<SavedSnapshot>;

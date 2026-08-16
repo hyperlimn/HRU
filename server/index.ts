@@ -9,11 +9,11 @@ import { createGenesisState } from './law/entities';
 
 export interface RuntimeStack { runtime: AuthoritativeRuntime; worker: SimulationWorkerHost; http: Server; websocket: RuntimeWebSocketServer; mcp: McpSocket; onShutdownRequested(listener: () => void): void; stop(): Promise<void> }
 
-export async function startRuntimeStack(port = 8787, instanceId = 'direct-runtime'): Promise<RuntimeStack> {
+export async function startRuntimeStack(port = 8787, instanceId = 'direct-runtime', saveDirectory?: string): Promise<RuntimeStack> {
   const manifest = createLawV1Manifest();
   const worker = new SimulationWorkerHost();
   const initialSummary = await worker.start(createGenesisState(manifest));
-  const runtime = new AuthoritativeRuntime(worker, initialSummary, manifest);
+  const runtime = new AuthoritativeRuntime(worker, initialSummary, manifest, saveDirectory);
   let shutdownRequested: (() => void) | undefined;
   const http = createServer((request, response) => {
     if (request.method === 'POST' && request.url === '/control/shutdown') {
@@ -27,6 +27,7 @@ export async function startRuntimeStack(port = 8787, instanceId = 'direct-runtim
   await new Promise<void>((resolve, reject) => { http.once('error', reject); http.listen(port, '127.0.0.1', resolve); });
   const websocket = new RuntimeWebSocketServer(http, new CommandRouter(runtime));
   runtime.on('summary', (summary) => websocket.broadcast(summary));
+  runtime.on('observation-events', (events, generation) => websocket.broadcastEvents(events, generation));
   runtime.start();
   const mcp = new McpSocket(runtime);
   return { runtime, worker, http, websocket, mcp, onShutdownRequested: (listener) => { shutdownRequested = listener; }, stop: async () => {

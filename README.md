@@ -1,6 +1,6 @@
 # HRU — Hash-Relational Universe
 
-HRU implements deterministic Universe Law v1. It does not contain spatial physics or render authoritative entities yet; Three.js remains a read-only observer showing clearly labeled development markers.
+HRU implements deterministic Universe Law v1 and a read-only Three.js Observation Module. Entity placement and visual persistence are observer projections only; HRU contains no spatial physics.
 
 ## Commands
 
@@ -24,6 +24,7 @@ On Windows CMD, Ctrl+C during an npm batch script may display `Terminate batch j
 - `src/core` contains shared typed manifest, authoritative state, provenance, and summary contracts.
 - `src/interface` carries the same command/query capabilities for browser and future machine/MCP adapters.
 - `src/observer` remains read-only and never advances or mutates the universe.
+- `server/observation` creates immutable frames, deterministic relationship events, and bounded cursor buffers inside the worker boundary.
 
 Runtime controls and telemetry (`running`, multiplier, measured ticks/sec, active dimension, autosave status) are not deterministic universe state. Camera, render toggles, selected entities, and panel state are observer-only.
 
@@ -62,3 +63,17 @@ Loading validates structure, canonical pairs/members, uniqueness, references, an
 ## Browser summaries
 
 The browser receives compact summaries at most approximately ten times per second: tick, controls/throughput, entity and bond instruments, cluster instruments, condensation/injection counts, dimension, SHA-256 state digest, and autosave status. Full entity/bond state is not broadcast. Future detailed inspection APIs should be paginated.
+
+## Observation module
+
+`observation/frame`, `observation/events`, and `observation/entity` use the same query layer as human UI and future machine/MCP clients. Frames are produced by the worker from a snapshot of its sole authoritative state and contain only immutable render/inspection records. Save listings similarly expose metadata and tick, never embedded authoritative snapshots.
+
+Frames are requested at 4 Hz. Compact runtime summaries remain separate. Events are derived from consecutive deterministic states, canonically ordered, and given SHA-256 event identities. They are observer-only: not saved and not included in the state digest. The worker retains at most 4,096 sequenced events; cursor reads return at most 1,024, WebSocket pushes are capped to 256 per worker batch, and clients with excessive socket backpressure are skipped. Resume clears the event buffer and advances its generation.
+
+Dimension-0 maps immutable hash bytes into a bounded `[-12, 12]³` volume. Render traits—color, emissive qualities, size, geometry variant, orientation, provenance styling, and context accent—are pure hash-derived functions. None are persisted or fed back into Law v1.
+
+Three.js uses instanced entity meshes grouped by geometry variant. Current bonds use cylinder geometry rather than unsupported WebGL line widths; cyan represents positive bonds and magenta represents negative bonds, with stronger treatment at active thresholds. Clusters, contexts, ancestry, condensation accents, and Dimension-0 guides are separately channel-controlled. Recent relationship, injection, condensation, and cluster events persist visually for 2.5 wall-clock seconds in the observer-only phase-effects group.
+
+Raycast selection maps instanced IDs back to entity hashes. The Entity panel shows provenance, creation tick, context, cluster, and current classified bonds. Selection, camera, channels, and animation clocks remain local observer state.
+
+Future scaling attaches at three explicit seams: paginated `observation/entity`/collection queries, cursor-based delta frames alongside the current complete frame, and renderer-adapter level-of-detail or WebGPU implementations. The current complete frame is never silently truncated.

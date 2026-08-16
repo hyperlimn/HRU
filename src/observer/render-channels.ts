@@ -9,5 +9,5 @@ export interface RenderChannel { readonly id: RenderChannelId; readonly label: s
 export const renderChannels: readonly RenderChannel[] = RENDER_CHANNEL_IDS.map((id) => ({
   id,
   label: id.split('-').map((part) => part[0]!.toUpperCase() + part.slice(1)).join(' '),
-  defaultVisible: id === 'entities',
+  defaultVisible: ['entities', 'positive-bonds', 'repulsion', 'clusters', 'phase-effects', 'condensed-entities', 'dimension-effects'].includes(id),
 }));

@@ -2,6 +2,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import type { Server } from 'node:http';
 import type { ClientMessage, ServerMessage } from '../../src/interface/protocol';
 import type { RuntimeSummary } from '../../src/core/state';
+import type { SequencedRelationshipEvent } from '../../src/observer/observation-types';
 import { CommandRouter } from '../commands/command-router';
 
 export class RuntimeWebSocketServer {
@@ -19,6 +20,10 @@ export class RuntimeWebSocketServer {
   broadcast(summary: RuntimeSummary): void {
     const message = JSON.stringify({ kind: 'summary', payload: summary } satisfies ServerMessage);
     for (const client of this.server.clients) if (client.readyState === WebSocket.OPEN) client.send(message);
+  }
+  broadcastEvents(events: readonly SequencedRelationshipEvent[], generation: number): void {
+    const message = JSON.stringify({ kind: 'observation-events', payload: { generation, events } } satisfies ServerMessage);
+    for (const client of this.server.clients) if (client.readyState === WebSocket.OPEN && client.bufferedAmount < 1_000_000) client.send(message);
   }
   close(): Promise<void> { return new Promise((resolve) => this.server.close(() => resolve())); }
 }
