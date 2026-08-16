@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.hru-dev.pid
+.hru-data/
+*.log
