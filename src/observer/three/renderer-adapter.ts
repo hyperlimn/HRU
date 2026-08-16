@@ -9,7 +9,7 @@ import type { VisualEvent } from '../observer-state';
 import type { VisualConfiguration } from '../../visual-lab/types';
 import { visualRegistry } from '../../visual-lab/registry';
 import { booleanValue, numberValue, stringValue, vectorValue } from '../../visual-lab/configuration';
-import { transformedEntityVisual } from '../../visual-lab/transform';
+import { entityGeometryDetail, transformedEntityVisual } from '../../visual-lab/transform';
 
 export type ChannelVisibility = Readonly<Record<RenderChannelId, boolean>>;
 
@@ -30,7 +30,7 @@ export class ThreeObservationRenderer {
   private readonly seenEvents = new Set<string>();
   private visual: VisualConfiguration = visualRegistry.defaults();
   private geometryRevision = 0;
-  private entityGeometries?: readonly THREE.BufferGeometry[];
+  private readonly entityGeometries = new Map<string,THREE.BufferGeometry>();
 
   constructor(private readonly scene: THREE.Scene) {
     this.groups = Object.fromEntries((['entities','positive-bonds','repulsion','clusters','contexts','phase-effects','ancestry','condensed-entities','dimension-effects'] as RenderChannelId[]).map((id) => [id, new THREE.Group()])) as Record<RenderChannelId, THREE.Group>;
@@ -40,13 +40,14 @@ export class ThreeObservationRenderer {
   }
 
   setVisualConfiguration(values: VisualConfiguration): { geometryRebuilt: boolean } {
-    const geometryRebuilt = this.visual['entity.geometryDetail'] !== values['entity.geometryDetail'];
+    const geometryRebuilt = ['entity.geometryDetail','entity.minHashSmoothness','entity.maxHashSmoothness','entity.hashSmoothnessStrength'].some((id)=>this.visual[id]!==values[id]);
     const gridChanged = ['scene.gridSize','scene.gridDivisions','scene.gridPrimary','scene.gridSecondary'].some((id) => this.visual[id] !== values[id]);
-    const prior=this.visual;this.visual = values; if (geometryRebuilt) { this.geometryRevision += 1;this.entityGeometries?.forEach((geometry)=>geometry.dispose());this.entityGeometries=undefined; } if (gridChanged) this.rebuildGrid();
+    const prior=this.visual;this.visual = values; if (geometryRebuilt) { this.geometryRevision += 1;this.entityGeometries.forEach((geometry)=>geometry.dispose());this.entityGeometries.clear(); } if (gridChanged) this.rebuildGrid();
     const grid = this.groups['dimension-effects'].children[0]; if (grid) grid.visible = booleanValue(values, 'scene.gridEnabled');const rotation=vectorValue(values,'scene.worldRotation'),origin=vectorValue(values,'scene.originOffset');for(const[id,group]of Object.entries(this.groups)){if(id==='dimension-effects')continue;group.rotation.set(...rotation);group.position.set(...origin)}const gridRotation=vectorValue(values,'scene.gridRotation');this.groups['dimension-effects'].rotation.set(...gridRotation);this.groups['dimension-effects'].position.y=numberValue(values,'scene.gridHeight');
     const projectionChanged=Object.keys(values).some((id)=>prior[id]!==values[id]&&/^(entity|relationship|cluster|context|condensation|selection)\.|^scene\.worldSpread$/.test(id));if(projectionChanged)this.rebuildCurrent(); return { geometryRebuilt };
   }
   debugGeometryRevision(): number { return this.geometryRevision; }
+  debugEntityGeometryCount(): number { return this.entityGeometries.size; }
 
   update(frame: ObservationFrame, events: readonly VisualEvent[]): void {
     if (this.frame?.stateDigest !== frame.stateDigest) { this.frame = frame; this.rebuildCurrent(); }
@@ -66,26 +67,20 @@ export class ThreeObservationRenderer {
     if(booleanValue(this.visual,'entity.idlePulse')){const pulse=1+Math.sin(now*.001*numberValue(this.visual,'entity.idlePulseSpeed'))*numberValue(this.visual,'entity.idlePulseAmount');for(const mesh of this.entityMeshes)(mesh.material as THREE.MeshStandardMaterial).emissiveIntensity=numberValue(this.visual,'entity.emissiveMultiplier')*pulse}
     const highlight=this.groups.entities.getObjectByName('selection-highlight');if(highlight&&booleanValue(this.visual,'selection.pulse')){const pulse=1+Math.sin(now*.001*numberValue(this.visual,'selection.pulseSpeed'))*.08;highlight.scale.setScalar(pulse)}
   }
-  dispose(): void { for (const group of Object.values(this.groups)) { clearGroup(group); this.scene.remove(group); } this.entityGeometries?.forEach((geometry)=>geometry.dispose());this.entityGeometries=undefined; }
+  dispose(): void { for (const group of Object.values(this.groups)) { clearGroup(group); this.scene.remove(group); } this.entityGeometries.forEach((geometry)=>geometry.dispose());this.entityGeometries.clear(); }
 
   private rebuildCurrent(): void {
     for (const id of ['entities','positive-bonds','repulsion','clusters','contexts','ancestry','condensed-entities'] as RenderChannelId[]) clearGroup(this.groups[id],id!=='entities');
     this.selectionMap.clear(); this.entityMeshes = []; if (!this.frame) return;
     const transformed = new Map(this.frame.entities.map((entity) => [entity.hash, transformedEntityVisual(entity, this.visual)] as const));
     const positions = new Map(this.frame.entities.map((entity) => { const position = transformed.get(entity.hash)!.position; return [entity.hash, new THREE.Vector3(position.x, position.y, position.z)] as const; }));
-    const detail = numberValue(this.visual, 'entity.geometryDetail');
-    const geometries = this.entityGeometries ?? (this.entityGeometries=[new THREE.IcosahedronGeometry(1, detail), new THREE.OctahedronGeometry(1, detail), new THREE.DodecahedronGeometry(1, Math.min(1, detail))]);
     for (let variation = 0; variation < 3; variation += 1) {
-      const entities = this.frame.entities.filter((entity) => renderTraits(entity.hash, entity.provenance, entity.contextHash, Boolean(entity.clusterHash)).geometryVariation === variation);
-      if (!entities.length) continue;
-      const firstTraits=renderTraits(entities[0]!.hash,entities[0]!.provenance,entities[0]!.contextHash,Boolean(entities[0]!.clusterHash));const emissive=new THREE.Color(0x061824).lerp(new THREE.Color().setHSL(firstTraits.emissiveHue,.8,.5),numberValue(this.visual,'entity.emissiveInfluence'));const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: numberValue(this.visual,'entity.roughness'), metalness: numberValue(this.visual,'entity.metalness'), opacity: numberValue(this.visual,'entity.opacity'), transparent: numberValue(this.visual,'entity.opacity') < 1, emissive, emissiveIntensity: numberValue(this.visual,'entity.emissiveMultiplier'),wireframe:booleanValue(this.visual,'entity.wireframe'),depthTest:booleanValue(this.visual,'entity.depthTest'),depthWrite:booleanValue(this.visual,'entity.depthWrite') });
-      const mesh = new THREE.InstancedMesh(geometries[variation]!, material, entities.length); mesh.userData.observationEntities = true;
-      entities.forEach((entity, index) => {
-        const traits = renderTraits(entity.hash, entity.provenance, entity.contextHash, Boolean(entity.clusterHash)); const visual = transformed.get(entity.hash)!;
-        const influence = numberValue(this.visual,'entity.orientationInfluence'),axes=vectorValue(this.visual,'entity.scaleAxes'); const matrix = new THREE.Matrix4().compose(positions.get(entity.hash)!, new THREE.Quaternion().setFromEuler(new THREE.Euler(...traits.orientation.map((value)=>value*influence) as [number,number,number])), new THREE.Vector3(visual.size*axes[0], visual.size*axes[1], visual.size*axes[2]));
-        mesh.setMatrixAt(index, matrix); mesh.setColorAt(index, new THREE.Color(visual.finalColor)); this.selectionMap.set(mesh, index, entity.hash);
-      });
-      mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true; this.groups.entities.add(mesh); this.entityMeshes.push(mesh);
+      for(let detail=0;detail<=5;detail+=1){const entities=this.frame.entities.filter((entity)=>{const traits=renderTraits(entity.hash,entity.provenance,entity.contextHash,Boolean(entity.clusterHash));return traits.geometryVariation===variation&&entityGeometryDetail(entity,this.visual)===detail});if(!entities.length)continue;const key=`${variation}:${detail}`;let geometry=this.entityGeometries.get(key);if(!geometry){geometry=variation===0?new THREE.IcosahedronGeometry(1,detail):variation===1?new THREE.OctahedronGeometry(1,detail):new THREE.DodecahedronGeometry(1,detail);this.entityGeometries.set(key,geometry)}
+        const firstTraits=renderTraits(entities[0]!.hash,entities[0]!.provenance,entities[0]!.contextHash,Boolean(entities[0]!.clusterHash));const emissive=new THREE.Color(0x061824).lerp(new THREE.Color().setHSL(firstTraits.emissiveHue,.8,.5),numberValue(this.visual,'entity.emissiveInfluence'));const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: numberValue(this.visual,'entity.roughness'), metalness: numberValue(this.visual,'entity.metalness'), opacity: numberValue(this.visual,'entity.opacity'), transparent: numberValue(this.visual,'entity.opacity') < 1, emissive, emissiveIntensity: numberValue(this.visual,'entity.emissiveMultiplier'),wireframe:booleanValue(this.visual,'entity.wireframe'),depthTest:booleanValue(this.visual,'entity.depthTest'),depthWrite:booleanValue(this.visual,'entity.depthWrite') });
+        const mesh = new THREE.InstancedMesh(geometry, material, entities.length); mesh.userData.observationEntities = true;mesh.userData.geometryVariation=variation;mesh.userData.geometryDetail=detail;
+        entities.forEach((entity, index) => {const traits = renderTraits(entity.hash, entity.provenance, entity.contextHash, Boolean(entity.clusterHash)); const visual = transformed.get(entity.hash)!;const influence = numberValue(this.visual,'entity.orientationInfluence'),axes=vectorValue(this.visual,'entity.scaleAxes'); const matrix = new THREE.Matrix4().compose(positions.get(entity.hash)!, new THREE.Quaternion().setFromEuler(new THREE.Euler(...traits.orientation.map((value)=>value*influence) as [number,number,number])), new THREE.Vector3(visual.size*axes[0], visual.size*axes[1], visual.size*axes[2]));mesh.setMatrixAt(index, matrix); mesh.setColorAt(index, new THREE.Color(visual.finalColor)); this.selectionMap.set(mesh, index, entity.hash);});
+        mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true; this.groups.entities.add(mesh); this.entityMeshes.push(mesh);
+      }
     }
     for (const bond of this.frame.bonds) {
       const positive = bond.strength >= 0; const active = bond.classification === 'active-positive' || bond.classification === 'active-repulsion';

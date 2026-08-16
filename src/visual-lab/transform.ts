@@ -19,5 +19,12 @@ export function transformedEntityVisual(entity: ObservedEntity, values: VisualCo
   if (accentStrength > 0) baseColor.lerp(new THREE.Color().setHSL(base.accentHue, saturation, lightness), Math.min(1, accentStrength));
   const emissive = base.emissiveIntensity * numberValue(values, 'entity.emissiveMultiplier') * numberValue(values, 'entity.brightness');
   const position = dimensionZeroPosition(entity.hash); const spread = numberValue(values, 'scene.worldSpread');
-  return { base, size, finalColor: `#${baseColor.getHexString()}`, emissive, provenanceMultiplier, accentStrength, position: { x: position.x * spread, y: position.y * spread, z: position.z * spread } };
+  return { base, size, finalColor: `#${baseColor.getHexString()}`, emissive, provenanceMultiplier, accentStrength, geometryDetail:entityGeometryDetail(entity,values), position: { x: position.x * spread, y: position.y * spread, z: position.z * spread } };
+}
+
+export function entityGeometryDetail(entity: ObservedEntity, values: VisualConfiguration): number {
+  const traits=renderTraits(entity.hash,entity.provenance,entity.contextHash,Boolean(entity.clusterHash));
+  const minimum=numberValue(values,'entity.minHashSmoothness'),maximum=numberValue(values,'entity.maxHashSmoothness');
+  const hashDetail=minimum+(maximum-minimum)*traits.smoothnessUnit;const baseline=numberValue(values,'entity.geometryDetail');
+  return Math.max(0,Math.min(5,Math.round(baseline+(hashDetail-baseline)*numberValue(values,'entity.hashSmoothnessStrength'))));
 }

@@ -10,7 +10,7 @@ import type { VisualConfiguration } from '../visual-lab/types';
 export function SceneObserver() {
   const host = useRef<HTMLDivElement>(null); const adapter = useRef<ThreeObservationRenderer | undefined>(undefined);
   const { frame, visualEvents, channels, selectedHash, select } = useObserverState();
-  const { state: visualState } = useVisualLab(); const environment = useRef<Parameters<typeof applyEnvironment>[0] | undefined>(undefined);
+  const { state: visualState, setValue } = useVisualLab(); const environment = useRef<Parameters<typeof applyEnvironment>[0] | undefined>(undefined);
   useEffect(() => { if (frame) adapter.current?.update(frame, visualEvents); }, [frame, visualEvents]);
   useEffect(() => adapter.current?.setChannels(channels), [channels]);
   useEffect(() => adapter.current?.setSelection(selectedHash), [selectedHash]);
@@ -30,7 +30,7 @@ export function SceneObserver() {
     const resize=()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);}; addEventListener('resize',resize);
     return()=>{cancelAnimationFrame(frameId);removeEventListener('resize',resize);renderer.domElement.removeEventListener('pointerdown',pointerDown);renderer.domElement.removeEventListener('pointerup',pointerUp);controls.dispose();observation.dispose();renderer.dispose();element.removeChild(renderer.domElement);adapter.current=undefined;environment.current=undefined;};
   }, []);
-  return <div className="scene" ref={host} />;
+  const autoOrbit=Boolean(visualState?.values['camera.autoRotate']);return <><div className="scene" ref={host} /><button className={autoOrbit?'viewport-auto-orbit active':'viewport-auto-orbit'} aria-pressed={autoOrbit} onClick={()=>setValue('camera.autoRotate',!autoOrbit)}><span/>Auto Orbit</button></>;
 }
 
 interface Environment {scene:THREE.Scene;camera:THREE.PerspectiveCamera;renderer:THREE.WebGLRenderer;controls:OrbitControls;ambient:THREE.AmbientLight;primary:THREE.PointLight;fill:THREE.PointLight}
@@ -38,7 +38,9 @@ function applyEnvironment({scene,camera,renderer,controls,ambient,primary,fill}:
   scene.background=new THREE.Color(stringValue(values,'scene.background'));const fogType=booleanValue(values,'scene.fogEnabled')?stringValue(values,'scene.fogType'):'none';scene.fog=fogType==='exponential'?new THREE.FogExp2(stringValue(values,'scene.fogColor'),numberValue(values,'scene.fogDensity')):fogType==='linear'?new THREE.Fog(stringValue(values,'scene.fogColor'),numberValue(values,'scene.fogNear'),numberValue(values,'scene.fogFar')):null;
   renderer.setPixelRatio(Math.min(devicePixelRatio,numberValue(values,'scene.pixelRatioCap')));renderer.toneMappingExposure=numberValue(values,'scene.exposure');renderer.toneMapping=({none:THREE.NoToneMapping,linear:THREE.LinearToneMapping,reinhard:THREE.ReinhardToneMapping,aces:THREE.ACESFilmicToneMapping} as const)[stringValue(values,'scene.toneMapping') as 'none'|'linear'|'reinhard'|'aces'];
   camera.fov=numberValue(values,'camera.fov');camera.near=numberValue(values,'camera.near');camera.far=numberValue(values,'camera.far');camera.updateProjectionMatrix();
-  controls.enableDamping=booleanValue(values,'camera.damping');controls.dampingFactor=numberValue(values,'camera.dampingFactor');controls.rotateSpeed=numberValue(values,'camera.rotateSpeed');controls.panSpeed=numberValue(values,'camera.panSpeed');controls.zoomSpeed=numberValue(values,'camera.zoomSpeed');controls.autoRotate=booleanValue(values,'camera.autoRotate');controls.autoRotateSpeed=numberValue(values,'camera.autoRotateSpeed');
+  applyOrbitConfiguration(controls,values);
   for(const [light,prefix] of [[ambient,'light.ambient'],[primary,'light.primary'],[fill,'light.fill']] as const){light.visible=booleanValue(values,`${prefix}Enabled`);light.color.set(stringValue(values,`${prefix}Color`));light.intensity=numberValue(values,`${prefix}Intensity`)}
   const pp=vectorValue(values,'light.primaryPosition'),fp=vectorValue(values,'light.fillPosition');primary.position.set(...pp);fill.position.set(...fp);
 }
+
+export function applyOrbitConfiguration(controls:Pick<OrbitControls,'enableDamping'|'dampingFactor'|'rotateSpeed'|'panSpeed'|'zoomSpeed'|'autoRotate'|'autoRotateSpeed'>,values:VisualConfiguration):void{controls.enableDamping=booleanValue(values,'camera.damping');controls.dampingFactor=numberValue(values,'camera.dampingFactor');controls.rotateSpeed=numberValue(values,'camera.rotateSpeed');controls.panSpeed=numberValue(values,'camera.panSpeed');controls.zoomSpeed=numberValue(values,'camera.zoomSpeed');controls.autoRotate=booleanValue(values,'camera.autoRotate');controls.autoRotateSpeed=numberValue(values,'camera.autoRotateSpeed');}

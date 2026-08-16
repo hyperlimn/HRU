@@ -4,9 +4,10 @@ import type { HashHex } from '../shared/ids';
 export interface RenderTraits {
   readonly baseHue: number; readonly emissiveHue: number; readonly emissiveIntensity: number;
   readonly size: number; readonly geometryVariation: 0 | 1 | 2; readonly orientation: readonly [number, number, number];
-  readonly provenance: EntityProvenance['origin']; readonly accentHue: number;
+  readonly provenance: EntityProvenance['origin']; readonly accentHue: number; readonly smoothnessUnit: number;
 }
 const unit = (hash: string, offset: number): number => Number.parseInt(hash.slice(offset, offset + 4), 16) / 0xffff;
+const unit32 = (hash: string, offset: number): number => Number.parseInt(hash.slice(offset, offset + 8), 16) / 0xffffffff;
 
 export function renderTraits(hash: HashHex, provenance: EntityProvenance, contextHash: HashHex, clustered: boolean): RenderTraits {
   if (!/^[0-9a-f]{64}$/.test(hash) || !/^[0-9a-f]{64}$/.test(contextHash)) throw new TypeError('Render traits require canonical hashes');
@@ -16,6 +17,6 @@ export function renderTraits(hash: HashHex, provenance: EntityProvenance, contex
     size: (0.18 + unit(hash, 12) * 0.18) * provenanceScale,
     geometryVariation: Math.floor(unit(hash, 16) * 3) as 0 | 1 | 2,
     orientation: [unit(hash, 20) * Math.PI * 2, unit(hash, 24) * Math.PI * 2, unit(hash, 28) * Math.PI * 2] as const,
-    provenance: provenance.origin, accentHue: clustered ? unit(contextHash, 0) : unit(hash, 32),
+    provenance: provenance.origin, accentHue: clustered ? unit(contextHash, 0) : unit(hash, 32), smoothnessUnit: unit32(hash, 36),
   });
 }
