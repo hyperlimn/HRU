@@ -3,6 +3,7 @@ import type { ObservationCursor, ObservationEventBatch, ObservationFrame, Observ
 import type { HashHex } from '../shared/ids';
 import { renderChannels, type RenderChannelId } from './render-channels';
 import { useRuntime } from '../interface/human/runtime-context';
+import { useVisualLab } from '../visual-lab/visual-lab-context';
 
 export interface VisualEvent { readonly event: RelationshipEvent; readonly observedAt: number }
 interface ObserverStateValue {
@@ -15,6 +16,7 @@ const defaults = Object.fromEntries(renderChannels.map((channel) => [channel.id,
 
 export function ObserverStateProvider({ children }: { readonly children: ReactNode }) {
   const { connected, query, pushedEvents } = useRuntime(); const [frame, setFrame] = useState<ObservationFrame>();
+  const { state: visualState } = useVisualLab(); const observationHz = visualState?.values['performance.observationHz'] as number | undefined;
   const [visualEvents, setVisualEvents] = useState<readonly VisualEvent[]>([]); const [channels, setChannels] = useState(defaults); const [selectedHash, setSelectedHash] = useState<HashHex>();
   const cursor = useRef<ObservationCursor | undefined>(undefined); const generation = useRef<number | undefined>(undefined); const known = useRef(new Set<string>()); const polling = useRef(false);
   const ingest = useCallback((events: readonly SequencedRelationshipEvent[], nextGeneration: number) => {
@@ -36,8 +38,8 @@ export function ObserverStateProvider({ children }: { readonly children: ReactNo
         if (eventResult.ok) { const batch = eventResult.data as ObservationEventBatch; cursor.current = batch.nextCursor; ingest(batch.events, batch.generation); }
       } finally { polling.current = false; }
     };
-    void poll(); const timer = window.setInterval(() => void poll(), 250); return () => { active = false; window.clearInterval(timer); };
-  }, [connected, query, ingest]);
+    void poll(); const timer = window.setInterval(() => void poll(), 1000 / (observationHz ?? 4)); return () => { active = false; window.clearInterval(timer); };
+  }, [connected, query, ingest, observationHz]);
   const selected = useMemo(() => {
     if (!frame || !selectedHash) return undefined; const entity = frame.entities.find((item) => item.hash === selectedHash); if (!entity) return undefined;
     const cluster = frame.clusters.find((item) => item.memberHashes.includes(selectedHash));

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { MULTIPLIERS, type Multiplier } from '../../protocol';
 import { useRuntime } from '../runtime-context';
 import type { SaveListing } from '../../../modules/saves/save-system';
+import { useVisualLab } from '../../../visual-lab/visual-lab-context';
 
 export function UniversePanel() { const { summary } = useRuntime(); return <dl><dt>Universe</dt><dd>{summary?.manifest.universeId ?? 'Connecting…'}</dd><dt>Law</dt><dd>{summary?.manifest.lawVersion ?? '—'}</dd><dt>Entities</dt><dd>{summary?.entityCount.toLocaleString() ?? '—'}</dd><dt>Bonds</dt><dd>{summary?.totalBondCount.toLocaleString() ?? '—'}</dd><dt>Positive</dt><dd>{summary?.activePositiveBondCount.toLocaleString() ?? '—'}</dd><dt>Repulsions</dt><dd>{summary?.activeRepulsionCount.toLocaleString() ?? '—'}</dd><dt>Clusters</dt><dd>{summary?.clusterCount.toLocaleString() ?? '—'}</dd><dt>Largest cluster</dt><dd>{summary?.largestClusterSize.toLocaleString() ?? '—'}</dd><dt>Condensed</dt><dd>{summary?.condensedEntityCount.toLocaleString() ?? '—'}</dd><dt>Injected</dt><dd>{summary?.injectedEntityCount.toLocaleString() ?? '—'}</dd></dl>; }
 export function TimePanel() {
@@ -43,4 +44,4 @@ export function SavesPanel() {
 export function LaboratoryPanel() { return <p>Experiment socket ready. Experiments will receive isolated snapshot forks.</p>; }
 export function MachinePanel() { return <p>Shared command/query port ready. MCP transport placeholder.</p>; }
 export function SystemPanel() { const { connected, summary } = useRuntime(); return <><dl><dt>Runtime</dt><dd className={connected ? 'online' : 'offline'}>{connected ? 'Connected' : 'Offline'}</dd><dt>Render FPS</dt><dd><RenderFps /></dd><dt>Autosave</dt><dd>{summary?.autosaveStatus ?? '—'}</dd><dt>Last autosave</dt><dd>{summary?.lastAutosaveTick?.toLocaleString() ?? '—'}</dd></dl><label>State digest<output className="digest">{summary?.stateDigest ?? '—'}</output></label></>; }
-function RenderFps() { const [fps, setFps] = useState(0); useEffect(() => { const update = (event: Event) => setFps((event as CustomEvent<number>).detail); window.addEventListener('hru:render-fps', update); return () => window.removeEventListener('hru:render-fps', update); }, []); return <>{fps.toFixed(0)}</>; }
+function RenderFps() { const [fps, setFps] = useState(0);const{state}=useVisualLab(); useEffect(() => { const update = (event: Event) => setFps((event as CustomEvent<number>).detail); window.addEventListener('hru:render-fps', update); return () => window.removeEventListener('hru:render-fps', update); }, []); return <>{state?.values['performance.showFps']?fps.toFixed(0):'hidden'}</>; }

@@ -6,14 +6,17 @@ import { RuntimeWebSocketServer } from './websocket/websocket-server';
 import { McpSocket } from './mcp/mcp-socket';
 import { createLawV1Manifest } from './law/manifest';
 import { createGenesisState } from './law/entities';
+import { resolve } from 'node:path';
+import { VisualLabService } from './visual-lab/service';
 
 export interface RuntimeStack { runtime: AuthoritativeRuntime; worker: SimulationWorkerHost; http: Server; websocket: RuntimeWebSocketServer; mcp: McpSocket; onShutdownRequested(listener: () => void): void; stop(): Promise<void> }
 
-export async function startRuntimeStack(port = 8787, instanceId = 'direct-runtime', saveDirectory?: string): Promise<RuntimeStack> {
+export async function startRuntimeStack(port = 8787, instanceId = 'direct-runtime', saveDirectory?: string, observerDirectory?: string): Promise<RuntimeStack> {
   const manifest = createLawV1Manifest();
   const worker = new SimulationWorkerHost();
   const initialSummary = await worker.start(createGenesisState(manifest));
-  const runtime = new AuthoritativeRuntime(worker, initialSummary, manifest, saveDirectory);
+  const visualLab = await VisualLabService.create(resolve(observerDirectory ?? resolve('.hru-data', 'observer'), 'visual-lab.json'));
+  const runtime = new AuthoritativeRuntime(worker, initialSummary, manifest, saveDirectory, visualLab);
   let shutdownRequested: (() => void) | undefined;
   const http = createServer((request, response) => {
     if (request.method === 'POST' && request.url === '/control/shutdown') {
@@ -28,6 +31,7 @@ export async function startRuntimeStack(port = 8787, instanceId = 'direct-runtim
   const websocket = new RuntimeWebSocketServer(http, new CommandRouter(runtime));
   runtime.on('summary', (summary) => websocket.broadcast(summary));
   runtime.on('observation-events', (events, generation) => websocket.broadcastEvents(events, generation));
+  runtime.on('visual-state', (state) => websocket.broadcastVisualState(state));
   runtime.start();
   const mcp = new McpSocket(runtime);
   return { runtime, worker, http, websocket, mcp, onShutdownRequested: (listener) => { shutdownRequested = listener; }, stop: async () => {

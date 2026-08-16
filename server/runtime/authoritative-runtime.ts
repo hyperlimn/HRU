@@ -10,6 +10,7 @@ import { DimensionRegistry } from './dimension-registry';
 import { EmptyLaboratory } from './laboratory';
 import { PersistentSaveStore } from './persistent-save-store';
 import type { SimulationWorkerHost } from './simulation-worker-host';
+import type { VisualLabService } from '../visual-lab/service';
 
 export class AuthoritativeRuntime extends EventEmitter implements RuntimePort {
   readonly modules = new ModuleRegistry(); readonly saves: PersistentSaveStore;
@@ -17,7 +18,7 @@ export class AuthoritativeRuntime extends EventEmitter implements RuntimePort {
   private summary: RuntimeSummary; private activeDimension = DIMENSION_ZERO;
   private autosaveStatus: RuntimeSummary['autosaveStatus'] = 'idle'; private lastAutosaveTick?: number;
 
-  constructor(private readonly worker: SimulationWorkerHost, initialSummary: RuntimeSummary, manifest: UniverseManifest, saveDirectory?: string) {
+  constructor(private readonly worker: SimulationWorkerHost, initialSummary: RuntimeSummary, manifest: UniverseManifest, saveDirectory?: string, readonly visualLab?: VisualLabService) {
     super(); this.summary = initialSummary; this.saves = new PersistentSaveStore(saveDirectory ?? resolve('.hru-data', 'saves'), manifest);
     for (const module of [
       { id: 'dimensions', label: 'Dimensions', version: '1.0.0', deterministic: true }, { id: 'saves', label: 'Save System', version: '2.0.0', deterministic: false },
@@ -28,6 +29,7 @@ export class AuthoritativeRuntime extends EventEmitter implements RuntimePort {
     worker.on('autosave-boundary', (state: UniverseSnapshot) => void this.persistAutosave(state));
     worker.on('observation-events', (events, generation) => this.emit('observation-events', events, generation));
     worker.on('error', (error) => console.error('SIM WORKER   ERROR', error));
+    visualLab?.on('change', (state) => this.emit('visual-state', state));
   }
   start(): void { this.emit('summary', this.currentSummary()); }
   stop(): void { this.removeAllListeners(); }
@@ -35,6 +37,7 @@ export class AuthoritativeRuntime extends EventEmitter implements RuntimePort {
   snapshot(): Promise<UniverseSnapshot> { return this.worker.getState(); }
 
   async command(command: Command): Promise<CommandResult> {
+    if (command.type.startsWith('visual-lab/')) return this.requireVisualLab().execute(command as import('../../src/visual-lab/types').VisualLabCommand);
     switch (command.type) {
       case 'time/set-running': this.summary = this.decorate(await this.worker.setRunning(command.running)); break;
       case 'time/set-multiplier': this.summary = this.decorate(await this.worker.setMultiplier(command.multiplier)); break;
@@ -45,6 +48,7 @@ export class AuthoritativeRuntime extends EventEmitter implements RuntimePort {
     this.emit('summary', this.summary); return { ok: true, data: this.summary };
   }
   async query(query: Query): Promise<QueryResult> {
+    if (query.type.startsWith('visual-lab/')) return this.requireVisualLab().query(query as import('../../src/visual-lab/types').VisualLabQuery);
     switch (query.type) {
       case 'universe/state': return { ok: true, data: this.currentSummary() };
       case 'observation/frame': return { ok: true, data: await this.worker.getObservationFrame() };
@@ -55,8 +59,10 @@ export class AuthoritativeRuntime extends EventEmitter implements RuntimePort {
       case 'laboratory/list': return { ok: true, data: this.laboratory.list().map(({ id, label }) => ({ id, label })) };
       case 'modules/list': return { ok: true, data: this.modules.list() };
     }
+    return { ok: false, message: 'Unsupported query' };
   }
   private decorate(summary: RuntimeSummary): RuntimeSummary { return { ...summary, activeDimension: this.activeDimension, autosaveStatus: this.autosaveStatus, ...(this.lastAutosaveTick === undefined ? {} : { lastAutosaveTick: this.lastAutosaveTick }) }; }
+  private requireVisualLab(): VisualLabService { if (!this.visualLab) throw new Error('Visual Lab is unavailable'); return this.visualLab; }
   private async persistAutosave(state: UniverseSnapshot): Promise<void> {
     this.autosaveStatus = 'saving'; this.emit('summary', this.currentSummary());
     try { await this.saves.saveAutosave(state); this.lastAutosaveTick = state.tick; this.autosaveStatus = 'saved'; }
