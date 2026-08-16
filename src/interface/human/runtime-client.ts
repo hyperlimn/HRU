@@ -1,12 +1,12 @@
 import type { Command, CommandResult, ClientMessage, Query, QueryResult, ServerMessage } from '../protocol';
-import type { UniverseSnapshot } from '../../core/state';
+import type { RuntimeSummary } from '../../core/state';
 
-type SnapshotListener = (snapshot: UniverseSnapshot) => void;
+type SummaryListener = (summary: RuntimeSummary) => void;
 type ConnectionListener = (connected: boolean) => void;
 
 export class BrowserRuntimeClient {
   private socket?: WebSocket;
-  private readonly snapshotListeners = new Set<SnapshotListener>();
+  private readonly summaryListeners = new Set<SummaryListener>();
   private readonly connectionListeners = new Set<ConnectionListener>();
   private readonly pending = new Map<string, (result: CommandResult | QueryResult) => void>();
   private sequence = 0;
@@ -22,11 +22,11 @@ export class BrowserRuntimeClient {
     });
     this.socket.addEventListener('message', (event) => {
       const message = JSON.parse(String(event.data)) as ServerMessage;
-      if (message.kind === 'snapshot') this.snapshotListeners.forEach((listener) => listener(message.payload));
+      if (message.kind === 'summary') this.summaryListeners.forEach((listener) => listener(message.payload));
       if (message.kind === 'response') { this.pending.get(message.requestId)?.(message.payload); this.pending.delete(message.requestId); }
       if (message.kind === 'response' && message.payload.ok && 'data' in message.payload) {
-        const data = message.payload.data as Partial<UniverseSnapshot> | undefined;
-        if (data?.manifest && typeof data.tick === 'number') this.snapshotListeners.forEach((listener) => listener(data as UniverseSnapshot));
+        const data = message.payload.data as Partial<RuntimeSummary> | undefined;
+        if (data?.manifest && typeof data.tick === 'number' && typeof data.stateDigest === 'string') this.summaryListeners.forEach((listener) => listener(data as RuntimeSummary));
       }
     });
   }
@@ -34,7 +34,7 @@ export class BrowserRuntimeClient {
   disconnect(): void { this.socket?.close(); }
   command(payload: Command): Promise<CommandResult> { return this.request('command', payload) as Promise<CommandResult>; }
   query(payload: Query): Promise<QueryResult> { return this.request('query', payload) as Promise<QueryResult>; }
-  onSnapshot(listener: SnapshotListener): () => void { this.snapshotListeners.add(listener); return () => this.snapshotListeners.delete(listener); }
+  onSummary(listener: SummaryListener): () => void { this.summaryListeners.add(listener); return () => this.summaryListeners.delete(listener); }
   onConnection(listener: ConnectionListener): () => void { this.connectionListeners.add(listener); return () => this.connectionListeners.delete(listener); }
   private send(message: ClientMessage): void { if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify(message)); }
   private request(kind: 'command' | 'query', payload: Command | Query): Promise<CommandResult | QueryResult> {

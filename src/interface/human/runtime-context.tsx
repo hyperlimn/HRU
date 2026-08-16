@@ -1,10 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { UniverseSnapshot } from '../../core/state';
+import type { RuntimeSummary } from '../../core/state';
 import type { Command, CommandResult, Query, QueryResult } from '../protocol';
 import { BrowserRuntimeClient } from './runtime-client';
 
 interface RuntimeContextValue {
-  readonly snapshot?: UniverseSnapshot;
+  readonly summary?: RuntimeSummary;
   readonly connected: boolean;
   command(command: Command): Promise<CommandResult>;
   query(query: Query): Promise<QueryResult>;
@@ -14,17 +14,17 @@ const RuntimeContext = createContext<RuntimeContextValue | undefined>(undefined)
 
 export function RuntimeProvider({ children }: { readonly children: ReactNode }) {
   const client = useMemo(() => new BrowserRuntimeClient(), []);
-  const [snapshot, setSnapshot] = useState<UniverseSnapshot>();
+  const [summary, setSummary] = useState<RuntimeSummary>();
   const [connected, setConnected] = useState(false);
   useEffect(() => {
-    const offSnapshot = client.onSnapshot(setSnapshot);
+    const offSummary = client.onSummary(setSummary);
     const offConnection = client.onConnection(setConnected);
     client.connect();
-    return () => { offSnapshot(); offConnection(); client.disconnect(); };
+    return () => { offSummary(); offConnection(); client.disconnect(); };
   }, [client]);
   const command = useCallback((value: Command) => client.command(value), [client]);
   const query = useCallback((value: Query) => client.query(value), [client]);
-  const value = useMemo(() => ({ snapshot, connected, command, query }), [snapshot, connected, command, query]);
+  const value = useMemo(() => ({ summary, connected, command, query }), [summary, connected, command, query]);
   return <RuntimeContext.Provider value={value}>{children}</RuntimeContext.Provider>;
 }
 

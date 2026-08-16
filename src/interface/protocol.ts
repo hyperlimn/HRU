@@ -1,4 +1,4 @@
-import type { UniverseSnapshot } from '../core/state';
+import type { RuntimeSummary } from '../core/state';
 import type { DimensionID, SnapshotID } from '../shared/ids';
 
 export const MULTIPLIERS = [1, 2, 5, 10, 25, 50, 100, 250, 500, 1000] as const;
@@ -27,5 +27,5 @@ export type ClientMessage =
 
 export type ServerMessage =
   | { readonly kind: 'response'; readonly requestId: string; readonly payload: CommandResult | QueryResult }
-  | { readonly kind: 'snapshot'; readonly payload: UniverseSnapshot }
+  | { readonly kind: 'summary'; readonly payload: RuntimeSummary }
   | { readonly kind: 'status'; readonly payload: { readonly connected: boolean } };

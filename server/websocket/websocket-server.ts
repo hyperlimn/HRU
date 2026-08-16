@@ -1,7 +1,7 @@
 import { WebSocket, WebSocketServer } from 'ws';
 import type { Server } from 'node:http';
 import type { ClientMessage, ServerMessage } from '../../src/interface/protocol';
-import type { UniverseSnapshot } from '../../src/core/state';
+import type { RuntimeSummary } from '../../src/core/state';
 import { CommandRouter } from '../commands/command-router';
 
 export class RuntimeWebSocketServer {
@@ -16,8 +16,8 @@ export class RuntimeWebSocketServer {
       });
     });
   }
-  broadcast(snapshot: UniverseSnapshot): void {
-    const message = JSON.stringify({ kind: 'snapshot', payload: snapshot } satisfies ServerMessage);
+  broadcast(summary: RuntimeSummary): void {
+    const message = JSON.stringify({ kind: 'summary', payload: summary } satisfies ServerMessage);
     for (const client of this.server.clients) if (client.readyState === WebSocket.OPEN) client.send(message);
   }
   close(): Promise<void> { return new Promise((resolve) => this.server.close(() => resolve())); }
