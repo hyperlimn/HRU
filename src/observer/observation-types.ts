@@ -14,6 +14,8 @@ export interface ObservedEntity {
 export interface ObservedBond {
   readonly low: HashHex;
   readonly high: HashHex;
+  /** Observer identity only: SHA-256(raw low hash || raw high hash). */
+  readonly pairHash?: HashHex;
   readonly strength: number;
   readonly classification: BondClassification;
 }

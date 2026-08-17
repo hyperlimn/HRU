@@ -2,9 +2,9 @@ import type { AuthoritativeUniverseState } from '../../src/core/state';
 import type { ObservationFrame, ObservedBond, ObservedEntityDetail } from '../../src/observer/observation-types';
 import type { HashHex } from '../../src/shared/ids';
 import { isActivePositive, isActiveRepulsion } from '../law/bonds';
-import { compareHashes } from '../law/canonical-encoding';
+import { compareHashes,concatBytes,hashToBytes } from '../law/canonical-encoding';
 import { detectClusters } from '../law/clusters';
-import { sha256Provider } from '../law/hash-law';
+import { sha256Hex,sha256Provider } from '../law/hash-law';
 import { stateDigest } from '../law/state-digest';
 
 function classify(strength: number, state: AuthoritativeUniverseState): ObservedBond['classification'] {
@@ -24,7 +24,7 @@ export function projectObservationFrame(state: AuthoritativeUniverseState): Obse
       hash: entity.hash, provenance: structuredClone(entity.provenance), createdAtTick: entity.provenance.createdAtTick,
       contextHash: contextByEntity.get(entity.hash)!, ...(clusterByEntity.has(entity.hash) ? { clusterHash: clusterByEntity.get(entity.hash)! } : {}),
     })),
-    bonds: [...state.bonds].sort((a, b) => compareHashes(a.low, b.low) || compareHashes(a.high, b.high)).map((bond) => ({ ...bond, classification: classify(bond.strength, state) })),
+    bonds: [...state.bonds].sort((a, b) => compareHashes(a.low, b.low) || compareHashes(a.high, b.high)).map((bond) => ({ ...bond, pairHash:sha256Hex(concatBytes(hashToBytes(bond.low),hashToBytes(bond.high))), classification: classify(bond.strength, state) })),
     clusters, condensationRecords: structuredClone([...state.condensationRecords].sort((a, b) => compareHashes(a.entityHash, b.entityHash))),
   };
 }

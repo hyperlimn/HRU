@@ -5,6 +5,8 @@ import { VISUAL_SCHEMA_VERSION, normalizeVisualConfiguration, visualRegistry } f
 import { builtInProfiles, configurationsDiffer, profileByName } from '../../src/visual-lab/profiles';
 import { visualProfileHash } from './profile-hash';
 import { VisualLabPersistence } from './persistence';
+import {builtInRecipes,applyRecipe} from '../../src/visual-lab/recipes';
+import {builtInPalettes,paletteHash,paletteById} from '../../src/visual-lab/palettes';import type {Palette} from '../../src/visual-lab/palettes';
 
 const HISTORY_LIMIT = 50;
 function validName(name: string): string {
@@ -23,6 +25,8 @@ export class VisualLabService extends EventEmitter {
   private ab: { active?: 'A' | 'B'; A?: VisualConfiguration; B?: VisualConfiguration } = {};
   private undoStack: VisualConfiguration[] = [];
   private redoStack: VisualConfiguration[] = [];
+  private palettes = new Map<string,Palette>();
+  private paletteWarning?:string;
 
   private constructor(private readonly persistence: VisualLabPersistence, initial?: Awaited<ReturnType<VisualLabPersistence['load']>>) {
     super();
@@ -31,6 +35,7 @@ export class VisualLabService extends EventEmitter {
       for (const profile of initial.profiles) this.profiles.set(profile.name, profile);
       this.values = initial.values; this.activeProfile = initial.activeProfile; this.favorites = initial.favorites;
       this.showAdvanced = initial.showAdvanced; this.favoritesOnly = initial.favoritesOnly; this.ab = initial.ab;
+      for (const palette of initial.palettes) this.palettes.set(palette.id,palette);
     } else this.values = profileByName('High Visibility')!.values;
   }
 
@@ -49,7 +54,7 @@ export class VisualLabService extends EventEmitter {
     const profile = this.profiles.get(this.activeProfile);
     const identity = profile ? { ...profile, values: this.values } : { formatVersion: 1 as const, name: this.activeProfile, schemaVersion: VISUAL_SCHEMA_VERSION, values: this.values, builtIn: false };
     return {
-      schemaVersion: VISUAL_SCHEMA_VERSION, values: this.values, activeProfile: this.activeProfile,
+      schemaVersion: VISUAL_SCHEMA_VERSION, values: this.values, activeProfile: this.activeProfile,...(this.paletteWarning?{paletteWarning:this.paletteWarning}:{}),
       activeProfileHash: visualProfileHash(identity), dirty: !profile || configurationsDiffer(this.values, profile.values).length > 0,
       canUndo: this.undoStack.length > 0, canRedo: this.redoStack.length > 0, favorites: [...this.favorites],
       showAdvanced: this.showAdvanced, favoritesOnly: this.favoritesOnly,
@@ -61,6 +66,9 @@ export class VisualLabService extends EventEmitter {
       case 'visual-lab/schema': return { ok: true, data: this.schema() };
       case 'visual-lab/state': return { ok: true, data: this.state() };
       case 'visual-lab/profiles/list': return { ok: true, data: this.profilesList() };
+      case 'visual-lab/recipes/list': return { ok: true, data: builtInRecipes };
+      case 'visual-lab/palettes/list': return { ok: true, data: [...builtInPalettes,...this.palettes.values()].map(palette=>({...palette,hash:paletteHash(palette)})) };
+      case 'visual-lab/palette/get': {const palette=paletteById(query.id,[...this.palettes.values()]);return palette.id===query.id?{ok:true,data:{...palette,hash:paletteHash(palette)}}:{ok:false,message:`Unknown palette: ${query.id}`};}
     }
   }
   async execute(command: VisualLabCommand): Promise<CommandResult> {
@@ -101,14 +109,23 @@ export class VisualLabService extends EventEmitter {
       }
       case 'visual-lab/favorite/toggle': visualRegistry.get(command.id); this.favorites = this.favorites.includes(command.id) ? this.favorites.filter((id) => id !== command.id) : [...this.favorites, command.id].sort(); break;
       case 'visual-lab/preference/set': this[command.preference] = command.value; break;
+      case 'visual-lab/recipe/apply': { const recipe=builtInRecipes.find(item=>item.id===command.id); if(!recipe) throw new Error(`Unknown visual recipe: ${command.id}`); this.change(applyRecipe(this.values,recipe)); break; }
+      case 'visual-lab/palette/select': { const palette=paletteById(command.id,[...this.palettes.values()]); if(palette.id!==command.id)throw new Error(`Unknown palette: ${command.id}`); this.paletteWarning=undefined;this.change({...this.values,'palette.active':command.id}); break; }
+      case 'visual-lab/palette/create': { const p=validatePalette(command.palette); if(p.builtIn||this.palettes.has(p.id)||builtInPalettes.some(x=>x.id===p.id)) throw new Error('Palette ID already exists'); this.palettes.set(p.id,{...p,builtIn:false}); break; }
+      case 'visual-lab/palette/update': { const p=validatePalette(command.palette); if(p.builtIn||!this.palettes.has(p.id)) throw new Error('Only existing custom palettes can be updated'); this.palettes.set(p.id,{...p,builtIn:false}); break; }
+      case 'visual-lab/palette/duplicate': { const source=paletteById(command.source,[...this.palettes.values()]); if(source.id!==command.source) throw new Error('Unknown palette'); const id=command.name.toLowerCase().replace(/[^a-z0-9]+/g,'-'); if(this.palettes.has(id)||builtInPalettes.some(x=>x.id===id)) throw new Error('Palette ID already exists'); this.palettes.set(id,{...source,id,name:command.name,builtIn:false,metadata:{createdAt:new Date().toISOString()}}); break; }
+      case 'visual-lab/palette/rename': { const p=this.palettes.get(command.id); if(!p) throw new Error('Built-in palettes cannot be renamed'); const name=validName(command.name); this.palettes.set(command.id,{...p,name,metadata:{...p.metadata,updatedAt:new Date().toISOString()}}); break; }
+      case 'visual-lab/palette/delete': { if(!this.palettes.delete(command.id)) throw new Error('Built-in palettes cannot be deleted'); if(this.values['palette.active']===command.id)this.change({...this.values,'palette.active':'hru-default'}); break; }
+      case 'visual-lab/palette/import': { let parsed:unknown;try{parsed=JSON.parse(command.json)}catch{throw new Error('Palette import is not valid JSON')} const p=validatePalette(parsed as Palette); if(p.builtIn||this.palettes.has(p.id)||builtInPalettes.some(x=>x.id===p.id))throw new Error('Palette ID already exists'); this.palettes.set(p.id,{...p,builtIn:false}); break; }
+      case 'visual-lab/palette/export': { const p=paletteById(command.id,[...this.palettes.values()]); if(p.id!==command.id)throw new Error('Unknown palette'); return JSON.stringify(p,null,2); }
     }
     await this.persist(); this.emit('change', this.state()); return undefined;
   }
-  private change(values: VisualConfiguration): void { this.undoStack = [...this.undoStack, this.values].slice(-HISTORY_LIMIT); this.redoStack = []; this.values = normalizeVisualConfiguration(values); }
+  private change(values: VisualConfiguration): void { this.undoStack = [...this.undoStack, this.values].slice(-HISTORY_LIMIT); this.redoStack = []; this.values=normalizeVisualConfiguration(values); }
   private undo(): void { const previous = this.undoStack.pop(); if (!previous) return; this.redoStack = [...this.redoStack, this.values].slice(-HISTORY_LIMIT); this.values = previous; }
   private redo(): void { const next = this.redoStack.pop(); if (!next) return; this.undoStack = [...this.undoStack, this.values].slice(-HISTORY_LIMIT); this.values = next; }
   private requiredProfile(name: string): VisualProfile { const found = this.profiles.get(name); if (!found) throw new Error(`Unknown profile: ${name}`); return found; }
-  private loadProfile(name: string): void { const profile = this.requiredProfile(name); this.change(profile.values); this.activeProfile = profile.name; }
+  private loadProfile(name: string): void { const profile = this.requiredProfile(name);const paletteId=String(profile.values['palette.active']);const exists=builtInPalettes.some(p=>p.id===paletteId)||this.palettes.has(paletteId);this.change(exists?profile.values:{...profile.values,'palette.active':'hru-default'});this.activeProfile = profile.name;this.paletteWarning=exists?undefined:`Visual profile references missing palette ${paletteId}; using hru-default`; }
   private saveProfile(name: string, description?: string): void {
     name = validName(name); if (profileByName(name)) throw new Error('Built-in profiles cannot be overwritten');
     const now = new Date().toISOString(); const existing = this.profiles.get(name);
@@ -126,5 +143,6 @@ export class VisualLabService extends EventEmitter {
     const name = validName(profile.name); if (this.profiles.has(name) || profileByName(name)) throw new Error('Profile already exists');
     this.profiles.set(name, { ...profile, name, values: normalizeVisualConfiguration(profile.values), builtIn: false }); this.loadProfile(name);
   }
-  private async persist(): Promise<void> { await this.persistence.save({ values: this.values, activeProfile: this.activeProfile, profiles: [...this.profiles.values()].filter((profile) => !profile.builtIn), favorites: this.favorites, showAdvanced: this.showAdvanced, favoritesOnly: this.favoritesOnly, ab: this.ab }); }
+  private async persist(): Promise<void> { await this.persistence.save({ values: this.values, activeProfile: this.activeProfile, profiles: [...this.profiles.values()].filter((profile) => !profile.builtIn), palettes:[...this.palettes.values()], favorites: this.favorites, showAdvanced: this.showAdvanced, favoritesOnly: this.favoritesOnly, ab: this.ab }); }
 }
+function validatePalette(p:Palette):Palette {if(!p||typeof p.id!=='string'||!/^[a-z0-9][a-z0-9-]{0,99}$/.test(p.id)||typeof p.name!=='string'||!p.name.trim()||!Array.isArray(p.colors)||p.colors.length<2||p.colors.length>256||p.colors.some(c=>typeof c!=='string'||!/^#[0-9a-f]{6}$/i.test(c)))throw new Error('Palette requires a stable lowercase ID, a name, and 2–256 valid hexadecimal colors');const roles=Object.fromEntries(Object.entries(p.roles??{}).map(([role,indexes])=>{if(!Array.isArray(indexes)||indexes.some(index=>!Number.isInteger(index)||index<0||index>=p.colors.length))throw new Error(`Palette role ${role} contains an invalid swatch index`);return[role,[...indexes]]}));return{id:p.id,name:p.name.trim(),colors:p.colors.map(c=>c.toLowerCase()),roles,builtIn:false,...(p.metadata?{metadata:p.metadata}:{})};}

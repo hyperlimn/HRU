@@ -28,6 +28,20 @@ On Windows CMD, Ctrl+C during an npm batch script may display `Terminate batch j
 
 Runtime controls and telemetry (`running`, multiplier, measured ticks/sec, active dimension, autosave status) are not deterministic universe state. Camera, render toggles, selected entities, and panel state are observer-only.
 
+### Deterministic VFX
+
+`src/observer/vfx` contains renderer capability detection, an extensible effect registry, deterministic driver registries, curve/range/quantization mappings, weighted composition, and disposable postprocessing adapters. Bloom, selective bloom, and Particle Field run on the existing WebGL renderer. Depth of Field, Radial Blur, Linked Particles, and Vortex Field remain registered preparation sockets; Linked Particles reports its native WebGPU compute requirement.
+
+VFX controls are Visual Lab schema values, so profile persistence and hashing, undo/redo, A/B comparison, and human/machine commands share one path. Disabling bloom disposes postprocessing resources and returns to the ordinary renderer. VFX data never enters authoritative state, universe saves, or the Law v1 digest. Future WebGPU effects attach through another capability adapter without removing the WebGL fallback.
+
+Particle Field v1 is also functional on WebGL and uses one shared `THREE.Points` buffer. For source hash `S`, particle index `i`, and profile salt `v`, its identity is:
+
+```text
+SHA-256(lengthPrefixedUtf8("hru-particle-field-1") | rawHash(S) | uint64be(i) | uint64be(v))
+```
+
+Independent 16-bit fractions from that digest drive form, size, color, phase, and motion. Procedural movement is evaluated from the observation frame's universe tick; render delta and FPS are never inputs. Targets and particle indices are selected in canonical order when the global budget is exceeded. Particle configuration and buffers are observer-only, and disabling the effect disposes its geometry and shader material immediately. Depth of Field, Radial Blur, Linked Particles, and Vortex Field remain prepared or unavailable rather than simulated.
+
 ## Law v1 tick semantics
 
 Genesis is stored at tick 0 with exactly `SHA256(UTF8("seed1"))` and `SHA256(UTF8("seed2"))`, zero contexts, and no bonds. Advancing from stored tick `t−1` processes Law tick `t`. Context changes, condensations, and injections produced during tick `t` participate beginning at tick `t+1`.
@@ -89,3 +103,13 @@ Visual data is stored atomically in `.hru-data/observer/visual-lab.json`, separa
 Profiles have canonical SHA-256 identities over their format/schema version, name, optional description, and all normalized values in registry order. Metadata timestamps are excluded. Built-ins (`HRU Default`, `High Visibility`, `Deep Field`, and `Diagnostic`) are immutable. Imported profiles are strictly validated and incompatible schemas are rejected. A/B changes preserve the camera because camera position is local observer state. Future per-client sessions attach above `VisualLabService`; v1 intentionally broadcasts one globally shared visual configuration. Pagination, observation deltas, LOD, and split-screen A/B remain extension points rather than partial implementations.
 
 Future scaling attaches at three explicit seams: paginated `observation/entity`/collection queries, cursor-based delta frames alongside the current complete frame, and renderer-adapter level-of-detail or WebGPU implementations. The current complete frame is never silently truncated.
+
+Vortex Field v1 is an observer-only procedural module using one shared `THREE.LineSegments` buffer. Its stable identity is `SHA-256(lengthPrefixedUtf8("hru-vortex-field-1") | rawSourceHash | uint64be(visualSalt))`; digest fractions determine axis variation, curvature, disorder, handedness, and pulse phase. Geometry is evaluated from universe ticks and canonical source ordering. Relationship-axis and cluster-center projections are supported. Vortex Field and Particle Field share only generic driver routing and renderer lifecycle contracts; neither mutates authoritative state or the other subsystem's geometry.
+
+Radial Blur v1 is an observer-only, tick-driven postprocessing pass. Event identities use `SHA-256(lengthPrefixedUtf8("hru-radial-blur-1") | source identity | source tick | visual salt)`. When the WebGL path has one center, simultaneous events are combined by descending deterministic strength and event identity. The pass order is RenderPass → Radial Blur → Bloom → OutputPass; disabling it removes the pass and leaves ordinary observation rendering available.
+
+Depth of Field v1 is camera-owned observer state under Visual Lab → Camera. It uses Three.js `BokehPass` and is inserted before Radial Blur: RenderPass → Depth of Field → Radial Blur → Bloom → OutputPass. Focus can be manual, selected entity, the selected entity's cluster, nearest rendered entity, or largest visible cluster; unavailable targets retain the last valid focus distance and otherwise fall back to manual distance. The compact viewport Camera menu is another control surface over the same Visual Lab values.
+
+Global Palette uses stable string palette IDs for built-in and custom palettes. Legacy numeric selections are converted only by `server/visual-lab/migrations.ts` using the explicit mapping `0..4` to `hru-default`, `high-visibility`, `deep-field`, `monochrome`, and `aurora`; invalid legacy values report a warning and fall back to `hru-default`. New state and profiles persist string IDs.
+
+All universe-render color sources pass through `src/visual-lab/palettes.ts` when Global Palette is enabled. Stable SHA-256 fractions are cached by source identity plus a named channel such as `entity/base`, `entity/glow`, `relationship/base`, or `event/accent`. Semantic roles select an ordered swatch subset; absent roles use the whole palette. Continuous mode interpolates between palette swatches, while discrete and semantic modes select exact swatches. When Global Palette is disabled, the resolver returns the original explicit color unchanged. Palette changes rebuild current materials, vertex colors, lights, fog, and grid resources without rebuilding entity geometry.

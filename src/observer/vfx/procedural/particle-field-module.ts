@@ -1,0 +1,2 @@
+import type {VfxModuleDefinition} from '../shared/types';
+export const particleFieldModule:VfxModuleDefinition={id:'particle-field',label:'Particle Field',status:'functional',requirements:[{capability:'webgl',reason:'WebGL point rendering is unavailable'}],targets:['Entities','Selected Entity','Positive Bonds','Weak Bonds','Repulsion','Relationships','Clusters','Contexts','Condensed Entities','Events'],intendedParameters:['Target','Particle budget','Particles per target','Structure','Appearance','Tick-derived motion','Universal driver routing'],performance:'high'};

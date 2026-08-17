@@ -1,0 +1,17 @@
+import {describe,expect,it} from 'vitest';
+import {detectRendererCapabilities,unmetRequirement} from './capability/capabilities';
+import {vfxDrivers} from './drivers/driver-registry';
+import {mapVfxValue} from './mappings/mapping';
+import {composeVfxValue} from './mappings/composition';
+import {builtInVfxModules,vfxModuleRegistry} from './registry/module-registry';
+import {selectiveBloomIntensity} from './postprocessing/selective-bloom';
+import {visualRegistry} from '../../visual-lab/registry';
+
+describe('deterministic VFX foundation',()=>{
+ it('maps curves, inversion, and quantization predictably',()=>{expect(mapVfxValue(.6,{inputMin:.6,inputMax:1,outputMin:0,outputMax:5,curve:'linear',invert:false,quantizeSteps:0})).toBe(0);expect(mapVfxValue(1,{inputMin:.6,inputMax:1,outputMin:0,outputMax:5,curve:'linear',invert:false,quantizeSteps:0})).toBe(5);expect(mapVfxValue(.25,{inputMin:0,inputMax:1,outputMin:0,outputMax:4,curve:'linear',invert:true,quantizeSteps:0})).toBe(3)});
+ it('derives stable, differentiated hash values',()=>{const a='00'.repeat(32),b='ff'.repeat(32);expect(vfxDrivers.read('Entity Hash',{entityHash:a})).toBe(0);expect(vfxDrivers.read('Entity Hash',{entityHash:b})).toBe(1);expect(vfxDrivers.read('Entity Hash',{entityHash:b})).toBe(vfxDrivers.read('Entity Hash',{entityHash:b}))});
+ it('normalizes weighted compositions and ignores collection order',()=>{const mapping={inputMin:0,inputMax:1,outputMin:0,outputMax:4,curve:'linear' as const,invert:false,quantizeSteps:0};const a={driver:'Entity Hash' as const,weight:.35,mapping},b={driver:'Bond Strength' as const,weight:.65,mapping};const context={entityHash:'80'+'00'.repeat(31),bondStrength:1};expect(composeVfxValue([a,b],context)).toBeCloseTo(composeVfxValue([b,a],context),12)});
+ it('reports capability failures instead of activating unsupported modules',()=>{const caps=detectRendererCapabilities();const linked=builtInVfxModules.find(module=>module.id==='linked-particles')!;expect(unmetRequirement(caps,linked.requirements)).toBe('native WebGPU compute required');expect(vfxModuleRegistry.list(caps).find(module=>module.id==='linked-particles')?.unavailableReason).toContain('WebGPU')});
+ it('maps bond strength and entity hash through the same selective service',()=>{const base={...visualRegistry.defaults(),'vfx.selective.enabled':true,'vfx.routing.2.weight':0,'vfx.routing.1.weight':1,'vfx.routing.1.inputMin':.6,'vfx.routing.1.inputMax':1,'vfx.routing.1.outputMin':0,'vfx.routing.1.outputMax':5};expect(selectiveBloomIntensity({...base,'vfx.routing.1.driver':'Bond Strength'},{bondStrength:.6})).toBe(0);expect(selectiveBloomIntensity({...base,'vfx.routing.1.driver':'Bond Strength'},{bondStrength:1})).toBe(5);expect(selectiveBloomIntensity({...base,'vfx.routing.1.driver':'Entity Hash'},{entityHash:'00'.repeat(32)})).toBe(0);expect(selectiveBloomIntensity({...base,'vfx.routing.1.driver':'Entity Hash'},{entityHash:'ff'.repeat(32)})).toBe(5)});
+ it('registers all functional and prepared modules',()=>{expect(builtInVfxModules.map(module=>module.id)).toEqual(['bloom','selective-bloom','radial-blur','particle-field','vortex-field','linked-particles']);expect(builtInVfxModules.find(module=>module.id==='particle-field')?.status).toBe('functional');expect(builtInVfxModules.find(module=>module.id==='vortex-field')?.status).toBe('functional');expect(builtInVfxModules.find(module=>module.id==='radial-blur')?.status).toBe('functional')});
+});

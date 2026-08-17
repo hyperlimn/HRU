@@ -18,8 +18,9 @@ describe('VisualParameterRegistry', () => {
     expect(() => visualRegistry.validate('camera.fov', 180)).toThrow();
     expect(() => visualRegistry.validate('scene.gridDivisions', 2.5)).toThrow();
     expect(() => normalizeVisualConfiguration({ ...visualRegistry.defaults(), 'camera.near': 50, 'camera.far': 40 })).toThrow(/Nearest/);
+    expect(() => normalizeVisualConfiguration({ ...visualRegistry.defaults(), 'vfx.routing.1.inputMin': 1, 'vfx.routing.1.inputMax': 1 })).toThrow(/range cannot be zero/);
   });
-  it('gives every parameter a reachable sidebar category and human-facing label',()=>{for(const parameter of visualRegistry.list()){expect(parameter.category.length).toBeGreaterThan(0);expect(parameter.categoryOrder).toBeGreaterThan(0);expect(parameter.label).not.toBe(parameter.id);expect(parameter.sliderMin===undefined||parameter.sliderMax===undefined||parameter.sliderMin<=parameter.sliderMax).toBe(true);}expect(new Set(visualRegistry.list().map(({category})=>category))).toEqual(new Set(['Three.js World','Grid','Camera','Lighting','Entities','Relationships','Clusters','Contexts','Selection','Events / Persistence','Performance / Observation']));});
+  it('gives every parameter a reachable sidebar category and human-facing label',()=>{for(const parameter of visualRegistry.list()){expect(parameter.category.length).toBeGreaterThan(0);expect(parameter.categoryOrder).toBeGreaterThan(0);expect(parameter.label).not.toBe(parameter.id);expect(parameter.sliderMin===undefined||parameter.sliderMax===undefined||parameter.sliderMin<=parameter.sliderMax).toBe(true);}expect(new Set(visualRegistry.list().map(({category})=>category))).toEqual(new Set(['Three.js World','Grid','Camera','Lighting','Entities','Relationships','Clusters','Contexts','Selection','Events / Persistence','Deterministic VFX','Performance / Observation','Color Palette']));});
   it('places every relationship parameter under one category with useful nested sections',()=>{
     const relationships=visualRegistry.list().filter(({id})=>id.startsWith('relationship.'));
     expect(relationships.length).toBeGreaterThan(0);

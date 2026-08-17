@@ -1,0 +1,5 @@
+import {concat,hexBytes,lengthUtf8,sha256Bytes,uint64be} from '../shared/sha256';
+export const PARTICLE_FIELD_MODULE_ID='hru-particle-field-1';
+export interface ParticleFractions{readonly radial:number;readonly angular:number;readonly vertical:number;readonly size:number;readonly brightness:number;readonly color:number;readonly orientation:number;readonly phase:number;readonly motion:number;readonly disorder:number}
+export function particleSeed(sourceIdentity:string,index:number,salt:number):Uint8Array{return sha256Bytes(concat(lengthUtf8(PARTICLE_FIELD_MODULE_ID),hexBytes(sourceIdentity),uint64be(index),uint64be(salt)))}
+export function particleFractions(sourceIdentity:string,index:number,salt:number):ParticleFractions{const seed=particleSeed(sourceIdentity,index,salt),view=new DataView(seed.buffer,seed.byteOffset,seed.byteLength),fraction=(offset:number)=>view.getUint16(offset,false)/65535;return{radial:fraction(0),angular:fraction(2),vertical:fraction(4),size:fraction(6),brightness:fraction(8),color:fraction(10),orientation:fraction(12),phase:fraction(14),motion:fraction(16),disorder:fraction(18)}}

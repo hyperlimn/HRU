@@ -1,0 +1,2 @@
+import type {VfxModuleDefinition} from '../shared/types';
+export const vortexFieldModule:VfxModuleDefinition={id:'vortex-field',label:'Vortex Field',status:'functional',requirements:[{capability:'webgl',reason:'WebGL line rendering is unavailable'}],targets:['Entities','Selected Entity','Positive Bonds','Weak Bonds','Repulsion','Relationships','Clusters','Contexts','Condensed Entities','Events'],intendedParameters:['Shape','Orientation','Deformation','Tick-derived motion','Appearance','Driver routing'],performance:'high'};
