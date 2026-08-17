@@ -7,7 +7,7 @@ export class CommandRouter {
     let payload;
     try {
       payload = message.kind === 'command'
-        ? await this.runtime.command(message.payload)
+        ? await this.runtime.command(message.payload, message.origin ?? 'human-ui')
         : await this.runtime.query(message.payload);
     } catch (error) {
       payload = { ok: false, message: error instanceof Error ? error.message : String(error) };

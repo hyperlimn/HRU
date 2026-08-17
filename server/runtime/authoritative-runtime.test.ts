@@ -9,6 +9,10 @@ import { createLawV1Manifest } from '../law/manifest';
 import { stateDigest } from '../law/state-digest';
 import { AuthoritativeRuntime } from './authoritative-runtime';
 import { SimulationWorkerHost } from './simulation-worker-host';
+import { VisualLabService } from '../visual-lab/service';
+import { resolveEffectiveVisualObject, selectionForEntity } from '../../src/observer/visual-object';
+import type { Palette } from '../../src/visual-lab/palettes';
+import type { ObservationFrame } from '../../src/observer/observation-types';
 
 describe('worker-owned save continuation', () => {
   it('save/restart/resume matches uninterrupted execution exactly', async () => {
@@ -25,4 +29,8 @@ describe('worker-owned save continuation', () => {
       finally { runtime2.stop(); await worker2.stop(); }
     } finally { runtime1.stop(); await worker1.stop().catch(() => undefined); await rm(path, { recursive: true, force: true }); }
   }, 30_000);
+});
+
+describe('machine visual causality queries',()=>{
+  it('returns the same effective-state structure used by the human inspector',async()=>{const path=await mkdtemp(join(tmpdir(),'hru-visual-query-')),manifest=createLawV1Manifest('2026-01-01T00:00:00.000Z'),worker=new SimulationWorkerHost(),initial=await worker.start(createGenesisState(manifest)),visual=await VisualLabService.create(join(path,'visual.json')),runtime=new AuthoritativeRuntime(worker,initial,manifest,join(path,'saves'),visual);try{await visual.execute({type:'visual-lab/palette/select',id:'aurora'});const frame=(await runtime.query({type:'observation/frame'})).data as ObservationFrame,selection=selectionForEntity(frame.entities[0]!),effective=await runtime.query({type:'visual-object/effective-state',selection}),why=await runtime.query({type:'visual-object/why',selection}),coverage=await runtime.query({type:'visual-lab/coverage'}),palettes=visual.query({type:'visual-lab/palettes/list'}).data as readonly Palette[],local=resolveEffectiveVisualObject(frame,selection,visual.state().values,{palettes});expect(effective).toEqual({ok:true,data:local});expect((effective.data as {palette:{activePaletteId:string}}).palette.activePaletteId).toBe('aurora');expect((why.data as unknown[]).length).toBeGreaterThan(0);expect(coverage.ok).toBe(true);expect(coverage.data as unknown[]).toHaveLength(437);expect((await runtime.query({type:'visual-object/inspect',selection:{type:'cluster',sourceIdentity:'0'.repeat(64),sourceType:'Cluster'}})).ok).toBe(false)}finally{runtime.stop();await worker.stop();await rm(path,{recursive:true,force:true})}},30_000);
 });

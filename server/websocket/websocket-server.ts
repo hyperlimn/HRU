@@ -5,6 +5,7 @@ import type { RuntimeSummary } from '../../src/core/state';
 import type { SequencedRelationshipEvent } from '../../src/observer/observation-types';
 import { CommandRouter } from '../commands/command-router';
 import type { VisualLabState } from '../../src/visual-lab/types';
+import type { ActivityEvent } from '../../src/activity/activity-events';
 
 export class RuntimeWebSocketServer {
   private readonly server: WebSocketServer;
@@ -30,5 +31,12 @@ export class RuntimeWebSocketServer {
     const message = JSON.stringify({ kind: 'visual-state', payload: state } satisfies ServerMessage);
     for (const client of this.server.clients) if (client.readyState === WebSocket.OPEN && client.bufferedAmount < 1_000_000) client.send(message);
   }
-  close(): Promise<void> { return new Promise((resolve) => this.server.close(() => resolve())); }
+  broadcastActivity(event: ActivityEvent): void {
+    const message = JSON.stringify({ kind: 'activity-event', payload: event } satisfies ServerMessage);
+    for (const client of this.server.clients) if (client.readyState === WebSocket.OPEN && client.bufferedAmount < 1_000_000) client.send(message);
+  }
+  close(): Promise<void> {
+    for (const client of this.server.clients) client.terminate();
+    return new Promise((resolve, reject) => this.server.close((error) => error ? reject(error) : resolve()));
+  }
 }

@@ -9,6 +9,7 @@
     "stop": "tsx scripts/stop.ts",
     "diagnostic": "tsx scripts/diagnostic.ts",
     "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && vite build",
     "test": "vitest run"
   },
   "repository": {
@@ -23,7 +24,6 @@
   },
   "homepage": "https://github.com/hyperlimn/HRU#readme",
   "dependencies": {
-    "@modelcontextprotocol/server": "^2.0.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "three": "^0.185.1",
@@ -37,7 +37,6 @@
     "@types/three": "^0.185.4",
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^6.0.5",
-    "concurrently": "^10.0.5",
     "tsx": "^4.23.12",
     "typescript": "^7.0.2",
     "vite": "^8.2.1",

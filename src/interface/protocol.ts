@@ -3,6 +3,8 @@ import type { DimensionID, SnapshotID } from '../shared/ids';
 import type { HashHex } from '../shared/ids';
 import type { ObservationCursor, SequencedRelationshipEvent } from '../observer/observation-types';
 import type { VisualLabCommand, VisualLabQuery, VisualLabState } from '../visual-lab/types';
+import type { ActivityEvent, ActivityOrigin } from '../activity/activity-events';
+import type { VisualSelection } from '../observer/visual-object';
 
 export const MULTIPLIERS = [1, 2, 5, 10, 25, 50, 100, 250, 500, 1000] as const;
 export type Multiplier = (typeof MULTIPLIERS)[number];
@@ -24,13 +26,16 @@ export type Query =
   | { readonly type: 'dimensions/list' }
   | { readonly type: 'laboratory/list' }
   | { readonly type: 'modules/list' }
+  | { readonly type: 'visual-object/inspect'; readonly selection: VisualSelection }
+  | { readonly type: 'visual-object/effective-state'; readonly selection: VisualSelection }
+  | { readonly type: 'visual-object/why'; readonly selection: VisualSelection }
   | VisualLabQuery;
 
 export interface CommandResult { readonly ok: boolean; readonly data?: unknown; readonly message?: string }
 export interface QueryResult { readonly ok: boolean; readonly data?: unknown; readonly message?: string }
 
 export type ClientMessage =
-  | { readonly kind: 'command'; readonly requestId: string; readonly payload: Command }
+  | { readonly kind: 'command'; readonly requestId: string; readonly payload: Command; readonly origin?: ActivityOrigin }
   | { readonly kind: 'query'; readonly requestId: string; readonly payload: Query };
 
 export type ServerMessage =
@@ -38,4 +43,5 @@ export type ServerMessage =
   | { readonly kind: 'summary'; readonly payload: RuntimeSummary }
   | { readonly kind: 'observation-events'; readonly payload: { readonly generation: number; readonly events: readonly SequencedRelationshipEvent[] } }
   | { readonly kind: 'visual-state'; readonly payload: VisualLabState }
+  | { readonly kind: 'activity-event'; readonly payload: ActivityEvent }
   | { readonly kind: 'status'; readonly payload: { readonly connected: boolean } };

@@ -11,10 +11,10 @@ async function main(): Promise<void> {
 
   try {
     process.kill(record.pid, 0);
-    const response = await fetch('http://127.0.0.1:8787');
+    const response = await fetch('http://127.0.0.1:8787', { signal: AbortSignal.timeout(2_000) });
     const health = await response.json() as { pid?: number; instanceId?: string };
     if (health.pid !== record.pid || health.instanceId !== record.instanceId) throw new Error('Recorded PID does not match the running HRU instance; refusing to stop it');
-    const shutdown = await fetch('http://127.0.0.1:8787/control/shutdown', { method: 'POST', headers: { 'x-hru-instance': record.instanceId } });
+    const shutdown = await fetch('http://127.0.0.1:8787/control/shutdown', { method: 'POST', headers: { 'x-hru-instance': record.instanceId }, signal: AbortSignal.timeout(2_000) });
     if (shutdown.status !== 202) throw new Error(`HRU rejected shutdown request (${shutdown.status})`);
     console.log(`HRU          STOPPING RECORDED STACK (PID ${record.pid})`);
     const deadline = Date.now() + 8_000;

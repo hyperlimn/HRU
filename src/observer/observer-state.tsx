@@ -4,20 +4,24 @@ import type { HashHex } from '../shared/ids';
 import { renderChannels, type RenderChannelId } from './render-channels';
 import { useRuntime } from '../interface/human/runtime-context';
 import { useVisualLab } from '../visual-lab/visual-lab-context';
+import { useActivity } from '../activity/activity-context';
+import { sameVisualSelection, type VisualSelection } from './visual-object';
 
 export interface VisualEvent { readonly event: RelationshipEvent; readonly observedAt: number }
 interface ObserverStateValue {
   readonly frame?: ObservationFrame; readonly visualEvents: readonly VisualEvent[]; readonly activity: RecentActivityCounts;
-  readonly channels: Readonly<Record<RenderChannelId, boolean>>; readonly selectedHash?: HashHex; readonly selected?: ObservedEntityDetail;
-  toggleChannel(id: RenderChannelId): void; select(hash?: HashHex): void;
+  readonly channels: Readonly<Record<RenderChannelId, boolean>>; readonly selectedVisual?: VisualSelection; readonly selectedHash?: HashHex; readonly selected?: ObservedEntityDetail;
+  toggleChannel(id: RenderChannelId): void; select(selection?: VisualSelection | HashHex): void;
 }
 const ObserverStateContext = createContext<ObserverStateValue | undefined>(undefined);
 const defaults = Object.fromEntries(renderChannels.map((channel) => [channel.id, channel.defaultVisible])) as Record<RenderChannelId, boolean>;
 
 export function ObserverStateProvider({ children }: { readonly children: ReactNode }) {
+  const { record } = useActivity();
   const { connected, query, pushedEvents } = useRuntime(); const [frame, setFrame] = useState<ObservationFrame>();
   const { state: visualState } = useVisualLab(); const observationHz = visualState?.values['performance.observationHz'] as number | undefined;
-  const [visualEvents, setVisualEvents] = useState<readonly VisualEvent[]>([]); const [channels, setChannels] = useState(defaults); const [selectedHash, setSelectedHash] = useState<HashHex>();
+  const [visualEvents, setVisualEvents] = useState<readonly VisualEvent[]>([]); const [channels, setChannels] = useState(defaults); const [selectedVisual, setSelectedVisual] = useState<VisualSelection>();
+  const selectedHash = selectedVisual?.entityHash as HashHex | undefined;
   const cursor = useRef<ObservationCursor | undefined>(undefined); const generation = useRef<number | undefined>(undefined); const known = useRef(new Set<string>()); const polling = useRef(false);
   const ingest = useCallback((events: readonly SequencedRelationshipEvent[], nextGeneration: number) => {
     if (generation.current !== nextGeneration) { generation.current = nextGeneration; known.current.clear(); setVisualEvents([]); }
@@ -47,11 +51,21 @@ export function ObserverStateProvider({ children }: { readonly children: ReactNo
     return { ...entity, ...(cluster ? { cluster } : {}), bonds };
   }, [frame, selectedHash]);
   const activity = useMemo(() => countActivity(visualEvents.map(({ event }) => event)), [visualEvents]);
-  const toggleChannel = useCallback((id: RenderChannelId) => setChannels((value) => ({ ...value, [id]: !value[id] })), []);
-  const select = useCallback((hash?: HashHex) => setSelectedHash(hash), []);
-  const value = useMemo(() => ({ frame, visualEvents, activity, channels, selectedHash, selected, toggleChannel, select }), [frame, visualEvents, activity, channels, selectedHash, selected, toggleChannel, select]);
+  const toggleChannel = useCallback((id: RenderChannelId) => setChannels((value) => {
+    const enabled = !value[id];
+    record({ category: 'RENDER', level: 'info', action: 'TOGGLE', message: `${id} ${enabled ? 'enabled' : 'disabled'}`, origin: 'observer', data: { channel: id, enabled } });
+    return { ...value, [id]: enabled };
+  }), [record]);
+  const select = useCallback((value?: VisualSelection | HashHex) => setSelectedVisual((current) => {
+    const selection = typeof value === 'string' ? { type: 'entity' as const, sourceIdentity: value, sourceType: 'Entity', entityHash: value } : value;
+    if (sameVisualSelection(current, selection)) return current;
+    record({ category: 'VISUAL', level: 'info', action: selection ? 'SELECT' : 'CLEAR', message: selection ? `selected ${selection.type} ${selection.sourceIdentity.slice(0, 12)}…` : 'visual selection cleared', origin: 'observer', ...(selection ? { data: { type: selection.type, sourceIdentity: selection.sourceIdentity } } : {}) });
+    return selection;
+  }), [record]);
+  const value = useMemo(() => ({ frame, visualEvents, activity, channels, selectedVisual, selectedHash, selected, toggleChannel, select }), [frame, visualEvents, activity, channels, selectedVisual, selectedHash, selected, toggleChannel, select]);
   return <ObserverStateContext.Provider value={value}>{children}</ObserverStateContext.Provider>;
 }
+
 
 export function useObserverState(): ObserverStateValue { const value = useContext(ObserverStateContext); if (!value) throw new Error('useObserverState must be inside ObserverStateProvider'); return value; }
 

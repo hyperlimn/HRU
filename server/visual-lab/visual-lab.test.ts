@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os'; import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { profileByName } from '../../src/visual-lab/profiles';
@@ -30,5 +30,32 @@ describe('Visual Lab profiles and service', () => {
     const root = await mkdtemp(join(tmpdir(), 'hru-visual-')); const universe = createGenesisState(createLawV1Manifest('2026-01-01T00:00:00.000Z')); const before = stateDigest(universe);
     try { const service = await VisualLabService.create(join(root, 'visual.json')); await service.execute({ type: 'visual-lab/values/patch', values: { 'entity.scale': 8, 'scene.exposure': 4, 'relationship.eventDuration': 10 } }); expect(stateDigest(universe)).toBe(before); }
     finally { await rm(root, { recursive: true, force: true }); }
+  });
+  it('serializes concurrent commands so memory and atomic persistence cannot diverge', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'hru-visual-'));
+    const file = join(root, 'visual.json');
+    try {
+      const service = await VisualLabService.create(file);
+      const results = await Promise.all([
+        service.execute({ type: 'visual-lab/value/set', id: 'entity.scale', value: 2.5 }),
+        service.execute({ type: 'visual-lab/value/set', id: 'entity.brightness', value: 1.75 }),
+      ]);
+      expect(results.every(({ ok }) => ok)).toBe(true);
+      const restarted = await VisualLabService.create(file);
+      expect(restarted.state().values['entity.scale']).toBe(2.5);
+      expect(restarted.state().values['entity.brightness']).toBe(1.75);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+  it('recovers safely from corrupt observer settings and exposes the reason', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'hru-visual-'));
+    const file = join(root, 'visual.json');
+    try {
+      await writeFile(file, '{broken', 'utf8');
+      const service = await VisualLabService.create(file);
+      expect(service.state().activeProfile).toBe('High Visibility');
+      expect(service.state().paletteWarning).toContain('settings are invalid');
+      expect((await service.execute({ type: 'visual-lab/value/set', id: 'entity.scale', value: 2 })).ok).toBe(true);
+      expect((await VisualLabService.create(file)).state().values['entity.scale']).toBe(2);
+    } finally { await rm(root, { recursive: true, force: true }); }
   });
 });
